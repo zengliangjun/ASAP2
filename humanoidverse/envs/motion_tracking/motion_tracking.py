@@ -409,7 +409,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             # self.robot_root_states[env_ids, 2] += 0.04 # in case under the terrain
             if self.config.simulator.config.name == 'isaacgym':
                 self.simulator.robot_root_states[env_ids, 3:7] = motion_res['root_rot'][env_ids]
-            elif self.config.simulator.config.name == 'isaacsim':
+            elif self.config.simulator.config.name == 'isaacsim' or self.config.simulator.config.name == 'isaacsim45':
                 self.simulator.robot_root_states[env_ids, 3:7] = xyzw_to_wxyz(motion_res['root_rot'][env_ids])
             elif self.config.simulator.config.name == 'genesis':
                 self.simulator.robot_root_states[env_ids, 3:7] = motion_res['root_rot'][env_ids]
@@ -437,7 +437,7 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
             self.simulator.robot_root_states[env_ids, :3] = root_pos + torch.randn_like(root_pos) * root_pos_noise
             if self.config.simulator.config.name == 'isaacgym':
                 self.simulator.robot_root_states[env_ids, 3:7] = quat_mul(self.small_random_quaternions(root_rot.shape[0], root_rot_noise), root_rot, w_last=True)
-            elif self.config.simulator.config.name == 'isaacsim':
+            elif self.config.simulator.config.name == 'isaacsim' or self.config.simulator.config.name == 'isaacsim45':
                 self.simulator.robot_root_states[env_ids, 3:7] = xyzw_to_wxyz(quat_mul(self.small_random_quaternions(root_rot.shape[0], root_rot_noise), root_rot, w_last=True))
             elif self.config.simulator.config.name == 'genesis':
                 self.simulator.robot_root_states[env_ids, 3:7] = quat_mul(self.small_random_quaternions(root_rot.shape[0], root_rot_noise), root_rot, w_last=True)

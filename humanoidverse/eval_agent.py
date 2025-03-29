@@ -1,6 +1,12 @@
 import os
 import sys
 from pathlib import Path
+import os.path as osp
+_root = osp.abspath(osp.join(osp.dirname(osp.abspath(__file__)), ".."))
+os.chdir(_root)
+sys.path.insert(0, _root)
+sys.path.insert(0, osp.join(_root, "isaac_utils"))
+
 
 import hydra
 from hydra.utils import instantiate
@@ -17,7 +23,7 @@ from humanoidverse.utils.config_utils import *  # noqa: E402, F403
 from loguru import logger
 
 import threading
-# from pynput import keyboard
+from pynput import keyboard
 
 def on_press(key, env):
     try:
@@ -47,10 +53,9 @@ def listen_for_keypress(env):
         listener.join()
 
 
-# from humanoidverse.envs.base_task.base_task import BaseTask
-# from humanoidverse.envs.base_task.omnih2o_cfg import OmniH2OCfg
+from humanoidverse import hydra_main
 
-@hydra.main(config_path="config", config_name="base_eval")
+@hydra_main.main(config_path="config", config_name="base_eval")
 def main(override_config: OmegaConf):
     # logging to hydra log file
     hydra_log_path = os.path.join(HydraConfig.get().runtime.output_dir, "eval.log")
@@ -105,7 +110,11 @@ def main(override_config: OmegaConf):
             
     simulator_type = config.simulator['_target_'].split('.')[-1]
     if simulator_type == 'IsaacSim':
-        from omni.isaac.lab.app import AppLauncher
+        _target_ = config.simulator['_target_']
+        if "isaacsim45" in _target_:
+            from isaaclab.app import AppLauncher
+        else:
+            from omni.isaac.lab.app import AppLauncher
         import argparse
         parser = argparse.ArgumentParser(description="Evaluate an RL agent with RSL-RL.")
         AppLauncher.add_app_launcher_args(parser)
