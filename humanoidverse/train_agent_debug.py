@@ -18,8 +18,10 @@ from loguru import logger
 
 
 from utils.config_utils import *  # noqa: E402, F403
+import hydra_main
+#import hydra
 
-@hydra.main(config_path="config", config_name="base", version_base="1.1")
+@hydra_main.main(config_path="config", config_name="base", version_base="1.1")
 def main(config: OmegaConf):
     # import ipdb; ipdb.set_trace()
 

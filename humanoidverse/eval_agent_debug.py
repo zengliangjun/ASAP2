@@ -52,7 +52,9 @@ def listen_for_keypress(env):
     with keyboard.Listener(on_press=lambda key: on_press(key, env)) as listener:
         listener.join()
 
-@hydra.main(config_path="config", config_name="base_eval")
+
+import hydra_main
+@hydra_main.main(config_path="config", config_name="base_eval")
 def main(override_config: OmegaConf):
     # logging to hydra log file
     hydra_log_path = os.path.join(HydraConfig.get().runtime.output_dir, "eval.log")
