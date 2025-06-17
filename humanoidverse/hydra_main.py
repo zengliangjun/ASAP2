@@ -65,7 +65,7 @@ def main(
                 ## for privileged training
                 if "base" == config_name:
                     args.overrides = [
-                        '+simulator=isaacsim45',
+                        '+simulator=isaacgym',
                         '+exp=motion_tracking',
                         '+domain_rand=NO_domain_rand',
                         '+rewards=motion_tracking/reward_motion_tracking_dm_2real',
