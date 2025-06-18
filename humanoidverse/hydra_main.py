@@ -66,7 +66,8 @@ def main(
                 if "base" == config_name:
                     args.overrides = [
                         '+simulator=isaacgym',
-                        '+exp=motion_tracking',
+                        #'+exp=motion_tracking',
+                        '+exp=motion_statistics',
                         '+domain_rand=NO_domain_rand',
                         '+rewards=motion_tracking/reward_motion_tracking_dm_2real',
                         '+robot=g1/g1_29dof_anneal_23dof',
@@ -87,7 +88,7 @@ def main(
                     ]
                 else:
                     args.overrides = [
-                        '+checkpoint=logs/MotionTracking/20250326_131636-MotionTracking_CR7-motion_tracking-g1_29dof_anneal_23dof/model_49500.pt'
+                        '+checkpoint=logs/MotionTracking/20250326_131636-MotionTracking_CR7-motion_tracking-g1_29dof_anneal_23dof/model_5100.pt'
                     ]
 
                 if args.experimental_rerun is not None:
