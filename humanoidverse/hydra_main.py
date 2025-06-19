@@ -66,9 +66,11 @@ def main(
                 if "base" == config_name:
                     args.overrides = [
                         '+simulator=isaacgym',
-                        '+exp=motion_tracking',
+                        #'+exp=motion_tracking',
+                        '+exp=motion_statistics',
                         '+domain_rand=NO_domain_rand',
-                        '+rewards=motion_tracking/reward_motion_tracking_dm_2real',
+                        #'+rewards=motion_tracking/reward_motion_tracking_dm_2real',
+                        '+rewards=motion_tracking/reward_motion_tracking_statistics',
                         '+robot=g1/g1_29dof_anneal_23dof',
                         '+terrain=terrain_locomotion_plane',
                         '+obs=motion_tracking/deepmimic_a2c_nolinvel_LARGEnoise_history',
