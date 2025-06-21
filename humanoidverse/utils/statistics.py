@@ -76,7 +76,9 @@ class MVCStatistics(MVStatistics):
     def __init__(self, shape: tuple, device, episode_truncation = -1):
         super(MVCStatistics, self).__init__(shape, device, episode_truncation)
 
-        self.episode_covariance_buf = torch.zeros((shape[0], shape[1], shape[1]),
+        covshape = (shape[0], shape[1], shape[1], *shape[2:])
+
+        self.episode_covariance_buf = torch.zeros(covshape,
                                                     device=device, dtype=torch.float)
 
     def clean(self):
@@ -87,7 +89,13 @@ class MVCStatistics(MVStatistics):
 
         step = self._calcute_step()
         step_e1 = step[:, None]
+
+        while len(step_e1.shape) != len(self.episode_variance_buf.shape):
+            step_e1 = step_e1[..., None]
+
         step_e2 = step_e1[..., None]
+        while len(step_e2.shape) != len(self.episode_covariance_buf.shape):
+            step_e2 = step_e2[..., None]
 
         # 计算均值：根据新差值delta0更新均值缓冲区
         delta0 = input - self.episode_mean_buf
@@ -100,7 +108,16 @@ class MVCStatistics(MVStatistics):
             + delta0 * delta1
         ) / (step_e1 - 1)
 
-        covariance = torch.einsum("bi,bj->bij", delta1, delta0)
+        if len(delta1.shape) > 2:
+            orgshape = delta1.shape
+            delta0 = torch.reshape(delta0, (*orgshape[:2], -1))
+            delta1 = torch.reshape(delta1, (*orgshape[:2], -1))
+            covariance = torch.einsum("bik,bjk->bijk", delta1, delta0)
+            covariance = torch.reshape(covariance, (*orgshape[:2], orgshape[1], *orgshape[2:]))
+
+        else:
+            covariance = torch.einsum("bi,bj->bij", delta1, delta0)
+
         self.episode_covariance_buf = (\
             self.episode_covariance_buf * (step_e2 - 2) + \
             covariance) / (step_e2 - 1)
@@ -134,4 +151,35 @@ class MVCStatistics(MVStatistics):
     def reset2(self, env_ids):
         super(MVCStatistics, self).reset2(env_ids)
         self.episode_covariance_buf[env_ids] = 0
+
+class MVStatistics2(MVStatistics):
+
+    def __init__(self, shape: Union[tuple, torch.Size], device, episode_truncation = -1):
+        super(MVStatistics2, self).__init__(shape, device, episode_truncation)
+
+    def update(self, input):
+        super(MVStatistics2, self).update(input)
+
+        mask = self.current_step <= 1
+        self.episode_mean_buf[mask] = 0
+
+        mask = self.current_step <= 2
+        self.episode_variance_buf[mask] = 0
+
+
+
+class MVCStatistics2(MVCStatistics):
+
+    def __init__(self, shape: tuple, device, episode_truncation = -1):
+        super(MVCStatistics2, self).__init__(shape, device, episode_truncation)
+
+    def update(self, input):
+        super(MVCStatistics2, self).update(input)
+
+        mask = self.current_step <= 1
+        self.episode_mean_buf[mask] = 0
+
+        mask = self.current_step <= 2
+        self.episode_variance_buf[mask] = 0
+        self.episode_covariance_buf[mask] = 0
 
