@@ -67,10 +67,12 @@ def main(
                     args.overrides = [
                         '+simulator=isaacgym',
                         #'+exp=motion_tracking',
-                        '+exp=motion_statistics',
+                        #'+exp=motion_statistics',
+                        '+exp=motion_statistics_contrast',
                         '+domain_rand=NO_domain_rand',
                         #'+rewards=motion_tracking/reward_motion_tracking_dm_2real',
-                        '+rewards=motion_tracking/reward_motion_tracking_statistics',
+                        #'+rewards=motion_tracking/reward_motion_tracking_statistics',
+                        '+rewards=motion_tracking/reward_motion_tracking_statistics_contrast',
                         '+robot=g1/g1_29dof_anneal_23dof',
                         '+terrain=terrain_locomotion_plane',
                         '+obs=motion_tracking/deepmimic_a2c_nolinvel_LARGEnoise_history',
@@ -85,11 +87,12 @@ def main(
                         'env.config.termination_curriculum.terminate_when_motion_far_curriculum=True',
                         'env.config.termination_curriculum.terminate_when_motion_far_threshold_min=0.3',
                         'env.config.termination_curriculum.terminate_when_motion_far_curriculum_degree=0.000025',
-                        'robot.asset.self_collisions=0'
+                        'robot.asset.self_collisions=0',
+                        '+checkpoint=logs/MotionTracking/isaacgym-MotionTracking_CR7-motion_statistics-g1_29dof_anneal_23dof-20250619_203955/model_43500.pt'
                     ]
                 else:
                     args.overrides = [
-                        '+checkpoint=logs/MotionTracking/20250326_131636-MotionTracking_CR7-motion_tracking-g1_29dof_anneal_23dof/model_49500.pt'
+                        '+checkpoint=logs/MotionTracking/isaacgym-MotionTracking_CR7-motion_statistics-g1_29dof_anneal_23dof-20250619_203955/model_39000.pt'
                     ]
 
                 if args.experimental_rerun is not None:
