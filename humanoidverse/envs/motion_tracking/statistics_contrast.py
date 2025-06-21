@@ -121,13 +121,13 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
         norm_target = torch.norm(target, dim=-1)
         norm_policy = torch.norm(policy, dim=-1)
         norm_mean = (norm_target + norm_policy) / 2.0
-        reward_mse = - torch.mean(diff ** 2, dim=-1) / (norm_mean + eps)
+        reward_mse = - torch.norm(diff, dim=-1) / (norm_mean + eps)
 
         # 余弦相似度部分
         reward_cos_sim = F.cosine_similarity(target, policy, dim=-1)
 
         # 奖励加权组合
-        reward = mse_weight * reward_mse + cos_weight * reward_cos_sim
+        reward = mse_weight * torch.exp(reward_mse) + cos_weight * reward_cos_sim
 
         return reward
 
