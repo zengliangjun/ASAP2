@@ -35,6 +35,20 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
         self.pre_joint_pos = torch.zeros(joint_shape, device = device)
         #self.pre_joint_vel = torch.zeros(joint_shape, device = device)
 
+        self.DEBUG_PLOT_REWARD = False
+        if self.DEBUG_PLOT_REWARD:
+            self.reward_collect = {}
+
+
+    def _collect(self, key, value):
+        if not self.DEBUG_PLOT_REWARD:
+            return
+
+        if key in self.reward_collect:
+            self.reward_collect[key].append(value)
+        else:
+            self.reward_collect[key] = [value]
+
 
     # _post_physics_step
     ## _pre_compute_observations_callback
@@ -98,6 +112,32 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
         # policy
         self.pre_rigid_body_pos_extend[env_ids] = 0
         self.pre_joint_pos[env_ids] = 0
+
+
+        if self.DEBUG_PLOT_REWARD:
+            import matplotlib.pyplot as plt
+            import numpy as np
+
+            if 0 != len(self.reward_collect):
+                rows = len(self.reward_collect)
+                fig, axs = plt.subplots(2, 1)
+                for key, value in self.reward_collect.items():
+                    time = np.linspace(0, len(value), len(value))
+                    break
+
+                id = 0
+                for key, value in self.reward_collect.items():
+                    if key.startswith("S_"):
+                        a = axs[0]
+                    else:
+                        a = axs[1]
+                    a.plot(time, np.array(value), label=key)
+                    a.legend()
+                    id += 1
+
+                plt.show()
+                self.reward_collect.clear()
+
 
 
     ###############################################################
