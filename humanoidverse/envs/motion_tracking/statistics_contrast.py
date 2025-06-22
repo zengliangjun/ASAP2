@@ -459,28 +459,42 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
 
         return reward
 
+    def _normal2pi(self, quat):
+        import numpy as np
+        angle, _ = quat_to_angle_axis(quat)
+        angle = angle % (2 * np.pi)  # 归一化到[0, 2π]
+        angle = torch.where(angle > np.pi,
+                               2 * np.pi - angle,
+                               angle)  # 取最小角度[0, π]
+        return angle
     ##
     ## rot
-    def _reward_S_rot_mean(self):
+    def _reward_S_rot_mean(self, eps=1e-6):
         dif_mean = quat_mul(self.target_body_rot.episode_mean_buf,
                             quat_conjugate(self.policy_body_rot.episode_mean_buf, w_last=True), w_last=True)
-        dif_mean = quat_to_angle_axis(dif_mean)[0]
+        dif_mean = self._normal2pi(dif_mean)
 
-        diff_dist = (dif_mean**2).mean(dim=-1)
-        reward = torch.exp(-diff_dist / self.config.rewards.reward_tracking_sigma.teleop_body_rot)
+        diff_dist = (dif_mean**2)#.mean(dim=-1)
 
+        norm_target = self._normal2pi(self.target_body_rot.episode_mean_buf)
+        norm_policy = self._normal2pi(self.policy_body_rot.episode_mean_buf)
+        norm_mean = ((norm_target + norm_policy) / 2.0 + eps)
+
+        reward = torch.exp(-diff_dist / norm_mean)
+        reward = torch.mean(reward, dim = -1)
         flags = self.episode_length_buf <= 2
-
         reward[flags] = 0
-
         return reward
 
-    def _reward_S_rot_variance(self):
+    def _reward_S_rot_variance(self, eps=1e-6):
         dif_mean = self.target_body_rot.episode_variance_buf - self.policy_body_rot.episode_variance_buf
 
-        diff_dist = torch.norm(dif_mean[..., 0], dim = -1)
-        reward = torch.exp(-diff_dist / self.config.rewards.reward_tracking_sigma.teleop_body_rot)
+        diff_dist = dif_mean[..., 0]**2
 
+        norm_mean = ((self.target_body_rot.episode_variance_buf + self.policy_body_rot.episode_variance_buf) / 2.0 + eps)
+
+        reward = torch.exp(-diff_dist / norm_mean[..., 0])
+        reward = torch.mean(reward, dim = -1)
         flags = self.episode_length_buf <= 2
 
         reward[flags] = 0

@@ -1,6 +1,6 @@
 import torch
 from typing import Union
-
+import numpy as np
 from isaac_utils import rotations
 
 class MVStatistics:
@@ -90,43 +90,36 @@ class MVQuat(MVStatistics):
         while len(step_e1.shape) != len(self.episode_mean_buf.shape):
             step_e1 = step_e1[:, None]
 
-        # 将当前均值四元数转换为切空间向量
-        current_mean_quat = rotations.quat_normalize(self.episode_mean_buf)
-        current_mean_log = rotations.quat_to_exp_map(current_mean_quat)
+        # 使用slerp计算增量式均值
+        new_mean = rotations.slerp(
+            self.episode_mean_buf,
+            input,
+            1.0/step_e1
+        )
 
-        # 将输入四元数转换到均值切空间
-        input_quat = rotations.quat_normalize(input)
-        relative_quat = rotations.quat_mul_norm(
-            rotations.quat_inverse(current_mean_quat, w_last=True),
-            input_quat,
+        # 计算相对旋转差异角度(带归一化)
+        q_diff = rotations.quat_mul_norm(
+            rotations.quat_inverse(self.episode_mean_buf, w_last=True),
+            input,
             w_last=True
         )
-        input_log = rotations.quat_to_exp_map(relative_quat)
+        angle_diff, _ = rotations.quat_to_angle_axis(q_diff)
+        angle_diff = angle_diff % (2 * np.pi)  # 归一化到[0, 2π]
+        angle_diff = torch.where(angle_diff > np.pi,
+                               2 * np.pi - angle_diff,
+                               angle_diff)  # 取最小角度[0, π]
+        angle_diff = angle_diff.unsqueeze(-1)  # 保持维度一致
 
-        # 在切空间进行增量式均值更新
-        delta0 = input_log - current_mean_log
-        new_mean_log = current_mean_log + delta0 / step_e1
-
-        # 计算方差(在切空间)
-        diff_norm_sq = torch.sum(delta0**2, dim=-1, keepdim=True)
-
-        delta = diff_norm_sq - self.episode_variance_buf
+        delta = angle_diff**2 - self.episode_variance_buf
         self.episode_variance_buf += delta / step_e1
 
         # step == 2
         mask2 = step == 2
-        self.episode_variance_buf[mask2] = diff_norm_sq[mask2]
+        self.episode_variance_buf[mask2] = angle_diff[mask2]**2
 
-        # 将新均值转换回四元数空间
-        angle = torch.norm(new_mean_log, dim=-1, keepdim=True)
-        axis = new_mean_log / (angle + 1e-8)
-        delta_quat = rotations.quat_from_angle_axis(angle.squeeze(-1), axis, w_last=True)
-        self.episode_mean_buf = rotations.quat_mul_norm(
-            current_mean_quat,
-            delta_quat,
-            w_last=True
-        )
 
+        # 更新均值
+        self.episode_mean_buf = new_mean
         # 初始情况处理
         mask = step <= 1
         self.episode_mean_buf[mask] = input[mask]
