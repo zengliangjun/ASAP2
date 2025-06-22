@@ -1,6 +1,8 @@
 import torch
 from typing import Union
 
+from isaac_utils import rotations
+
 class MVStatistics:
 
     def __init__(self, shape: Union[tuple, torch.Size], device, episode_truncation = -1):
@@ -70,6 +72,74 @@ class MVStatistics:
 
         self.episode_mean_buf[env_ids] =0
         self.episode_variance_buf[env_ids] = 0
+
+
+##
+class MVQuat(MVStatistics):
+
+    def __init__(self, shape: Union[tuple, torch.Size], device, episode_truncation = -1):
+        super(MVQuat, self).__init__(shape, device, episode_truncation)
+        vshape = (*shape[:-1], 1)
+        self.episode_variance_buf = torch.zeros(vshape, device=device)
+        self.episode_mean_buf[..., -1] = 1
+
+
+    def update(self, input):
+        step = self._calcute_step()
+        step_e1 = step[:, None]
+        while len(step_e1.shape) != len(self.episode_mean_buf.shape):
+            step_e1 = step_e1[:, None]
+
+        # 将当前均值四元数转换为切空间向量
+        current_mean_quat = rotations.quat_normalize(self.episode_mean_buf)
+        current_mean_log = rotations.quat_to_exp_map(current_mean_quat)
+
+        # 将输入四元数转换到均值切空间
+        input_quat = rotations.quat_normalize(input)
+        relative_quat = rotations.quat_mul_norm(
+            rotations.quat_inverse(current_mean_quat, w_last=True),
+            input_quat,
+            w_last=True
+        )
+        input_log = rotations.quat_to_exp_map(relative_quat)
+
+        # 在切空间进行增量式均值更新
+        delta0 = input_log - current_mean_log
+        new_mean_log = current_mean_log + delta0 / step_e1
+
+        # 计算方差(在切空间)
+        diff_norm_sq = torch.sum(delta0**2, dim=-1, keepdim=True)
+
+        delta = diff_norm_sq - self.episode_variance_buf
+        self.episode_variance_buf += delta / step_e1
+
+        # step == 2
+        mask2 = step == 2
+        self.episode_variance_buf[mask2] = diff_norm_sq[mask2]
+
+        # 将新均值转换回四元数空间
+        angle = torch.norm(new_mean_log, dim=-1, keepdim=True)
+        axis = new_mean_log / (angle + 1e-8)
+        delta_quat = rotations.quat_from_angle_axis(angle.squeeze(-1), axis, w_last=True)
+        self.episode_mean_buf = rotations.quat_mul_norm(
+            current_mean_quat,
+            delta_quat,
+            w_last=True
+        )
+
+        # 初始情况处理
+        mask = step <= 1
+        self.episode_mean_buf[mask] = input[mask]
+        self.episode_variance_buf[mask] = 0
+
+    def reset2(self, env_ids):
+        self.current_step[env_ids] = 0
+
+        self.episode_mean_buf[env_ids, ..., : -1] =0
+        self.episode_mean_buf[env_ids, ..., -1] =1
+        self.episode_variance_buf[env_ids] = 0
+
+
 
 class MVCStatistics(MVStatistics):
 
@@ -166,6 +236,22 @@ class MVStatistics2(MVStatistics):
         mask = self.current_step <= 2
         self.episode_variance_buf[mask] = 0
 
+##
+class MVQuat2(MVQuat):
+
+    def __init__(self, shape: Union[tuple, torch.Size], device, episode_truncation = -1):
+        super(MVQuat2, self).__init__(shape, device, episode_truncation)
+
+    def update(self, input):
+        super(MVQuat2, self).update(input)
+
+        mask = self.current_step <= 2
+        self.episode_mean_buf[mask] = input[mask]
+        self.episode_variance_buf[mask] = 0
+
+        mask = self.current_step <= 1
+        self.episode_mean_buf[mask, ..., : -1] = 0
+        self.episode_mean_buf[mask, ..., -1] = 1
 
 
 class MVCStatistics2(MVCStatistics):
@@ -182,4 +268,3 @@ class MVCStatistics2(MVCStatistics):
         mask = self.current_step <= 2
         self.episode_variance_buf[mask] = 0
         self.episode_covariance_buf[mask] = 0
-

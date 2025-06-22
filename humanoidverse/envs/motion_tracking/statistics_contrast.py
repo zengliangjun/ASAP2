@@ -3,6 +3,18 @@ import torch.nn.functional as F
 from . import motion_tracking
 from humanoidverse.utils import statistics
 
+from isaac_utils.rotations import (
+    my_quat_rotate,
+    calc_heading_quat_inv,
+    calc_heading_quat,
+    quat_mul,
+    quat_conjugate,
+    quat_to_angle_axis,
+    quat_rotate_inverse,
+    xyzw_to_wxyz,
+    wxyz_to_xyzw
+)
+
 
 class Tracking(motion_tracking.LeggedRobotMotionTracking):
     def __init__(self, config, device):
@@ -10,14 +22,20 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
 
         joint_shape = (self.num_envs, self.dim_actions)
         body_shape = (self.num_envs, self.num_bodies + self.num_extend_bodies, 3)
+        body_rot_shape = (self.num_envs, self.num_bodies + self.num_extend_bodies, 4)
 
         upper_body_shape = (self.num_envs, len(self.upper_body_id), 3)
         lower_body_shape = (self.num_envs, len(self.lower_body_id), 3)
         tracking_body_shape = (self.num_envs, len(self.motion_tracking_id), 3)
         feet_body_shape = (self.num_envs, len(self.feet_indices), 3)
 
+
         self.target_joint_angles = statistics.MVCStatistics2(joint_shape, device, 5)
         self.policy_joint_angles = statistics.MVCStatistics2(joint_shape, device, 5)
+
+        # rot
+        self.target_body_rot = statistics.MVQuat2(body_rot_shape, device, 5)
+        self.policy_body_rot = statistics.MVQuat2(body_rot_shape, device, 5)
 
         # body_position
         self.target_upper_body_pos = statistics.MVCStatistics2(upper_body_shape, device, 5)
@@ -39,12 +57,19 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
         self.pre_ref_joint_pos = torch.zeros(joint_shape, device = device)
         #self.pre_ref_joint_vel = torch.zeros(joint_shape, device = device)
 
+        # rot
+        self.pre_ref_rigid_body_rot_extend = torch.zeros(body_rot_shape, device = device)
+
+
         # policy
         self.pre_rigid_body_pos_extend = torch.zeros(body_shape, device = device)
         #self.pre_rigid_body_vel_extend = torch.zeros(body_shape, device = device)
         #self.pre_rigid_body_ang_vel_extend = torch.zeros(body_shape, device = device)
         self.pre_joint_pos = torch.zeros(joint_shape, device = device)
         #self.pre_joint_vel = torch.zeros(joint_shape, device = device)
+
+        # rot
+        self.pre_rigid_body_rot_extend = torch.zeros(body_rot_shape, device = device)
 
         self.DEBUG_PLOT_REWARD = False
         if self.DEBUG_PLOT_REWARD:
@@ -72,15 +97,24 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
         target_diff_joint_angles = self.ref_joint_pos - self.pre_ref_joint_pos
         target_diff_body_pos = self.ref_body_pos_extend - self.pre_ref_body_pos_extend
 
+        target_diff_rot = quat_mul(self.ref_body_rot_extend, quat_conjugate(self.pre_ref_rigid_body_rot_extend, w_last=True), w_last=True)
+
+
         target_diff_joint_angles[flags] = 0
         target_diff_body_pos[flags] = 0
+        target_diff_rot[flags, ..., : -1] = 0
+        target_diff_rot[flags, ..., -1] = 1
 
         # policy
         policy_diff_joint_angles = self.simulator.dof_pos - self.pre_joint_pos
         policy_diff_body_pos = self._rigid_body_pos_extend - self.pre_rigid_body_pos_extend
 
+        policy_diff_rot = quat_mul(self._rigid_body_rot_extend, quat_conjugate(self.pre_rigid_body_rot_extend, w_last=True), w_last=True)
+
         policy_diff_joint_angles[flags] = 0
         policy_diff_body_pos[flags] = 0
+        policy_diff_rot[flags, ..., : -1] = 0
+        policy_diff_rot[flags, ..., -1] = 1
 
         ## statistics
         self.target_joint_angles.update(target_diff_joint_angles)
@@ -99,6 +133,8 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
         self.target_body_pos.update(target_diff_body_pos)
         self.policy_body_pos.update(policy_diff_body_pos)
 
+        self.target_body_rot.update(target_diff_rot)
+        self.policy_body_rot.update(policy_diff_rot)
         ## update
         # target
         self.pre_ref_body_pos_extend[...] = self.ref_body_pos_extend
@@ -107,12 +143,16 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
         self.pre_ref_joint_pos[...] = self.ref_joint_pos
         #self.pre_ref_joint_vel[...] = self.ref_joint_vel
 
+        self.pre_ref_rigid_body_rot_extend[...] = self.ref_body_rot_extend
+
         # policy
         self.pre_rigid_body_pos_extend[...] = self._rigid_body_pos_extend
         #self.pre_rigid_body_vel_extend[...] = self._rigid_body_vel_extend
         #self.pre_rigid_body_ang_vel_extend[...] = self._rigid_body_ang_vel_extend
         self.pre_joint_pos[...] = self.simulator.dof_pos
         #self.pre_joint_vel[...] = self.simulator.dof_vel
+
+        self.pre_rigid_body_rot_extend[...] = self._rigid_body_rot_extend
 
 
     def _reset_dofs(self, env_ids):
@@ -416,5 +456,33 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
         flags = self.episode_length_buf <= 3
 
         reward[flags] = diff[flags]
+
+        return reward
+
+    ##
+    ## rot
+    def _reward_S_rot_mean(self):
+        dif_mean = quat_mul(self.target_body_rot.episode_mean_buf,
+                            quat_conjugate(self.policy_body_rot.episode_mean_buf, w_last=True), w_last=True)
+        dif_mean = quat_to_angle_axis(dif_mean)[0]
+
+        diff_dist = (dif_mean**2).mean(dim=-1)
+        reward = torch.exp(-diff_dist / self.config.rewards.reward_tracking_sigma.teleop_body_rot)
+
+        flags = self.episode_length_buf <= 2
+
+        reward[flags] = 0
+
+        return reward
+
+    def _reward_S_rot_variance(self):
+        dif_mean = self.target_body_rot.episode_variance_buf - self.policy_body_rot.episode_variance_buf
+
+        diff_dist = torch.norm(dif_mean[..., 0], dim = -1)
+        reward = torch.exp(-diff_dist / self.config.rewards.reward_tracking_sigma.teleop_body_rot)
+
+        flags = self.episode_length_buf <= 2
+
+        reward[flags] = 0
 
         return reward
