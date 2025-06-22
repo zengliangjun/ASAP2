@@ -29,6 +29,11 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
         tracking_body_shape = (self.num_envs, len(self.motion_tracking_id), 3)
         feet_body_shape = (self.num_envs, len(self.feet_indices), 3)
 
+        # root
+        root_rot_shape = (self.num_envs, 4)
+        root_pos_shape = (self.num_envs, 3)
+        root_vel_shape = (self.num_envs, 3)
+        root_ang_shape = (self.num_envs, 3)
 
         self.target_joint_angles = statistics.MVCStatistics2(joint_shape, device, 5)
         self.policy_joint_angles = statistics.MVCStatistics2(joint_shape, device, 5)
@@ -50,6 +55,17 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
         self.target_body_pos = statistics.MVCStatistics2(body_shape, device, 5)
         self.policy_body_pos = statistics.MVCStatistics2(body_shape, device, 5)
 
+        # root
+        self.target_root_rot = statistics.MVQuat2(root_rot_shape, device, 5)
+        self.policy_root_rot = statistics.MVQuat2(root_rot_shape, device, 5)
+
+        self.target_root_pos = statistics.MVStatistics2(root_pos_shape, device, 5)
+        self.policy_root_pos = statistics.MVStatistics2(root_pos_shape, device, 5)
+        self.target_root_vel = statistics.MVStatistics2(root_vel_shape, device, 5)
+        self.policy_root_vel = statistics.MVStatistics2(root_vel_shape, device, 5)
+        self.target_root_ang = statistics.MVStatistics2(root_ang_shape, device, 5)
+        self.policy_root_ang = statistics.MVStatistics2(root_ang_shape, device, 5)
+
         ##################################################
         self.pre_ref_body_pos_extend = torch.zeros(body_shape, device = device)
         #self.pre_ref_body_vel_extend = torch.zeros(body_shape, device = device)
@@ -59,7 +75,11 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
 
         # rot
         self.pre_ref_rigid_body_rot_extend = torch.zeros(body_rot_shape, device = device)
-
+        # root
+        self.pre_ref_root_rot = torch.zeros(root_rot_shape, device = device)
+        self.pre_ref_root_pos = torch.zeros(root_pos_shape, device = device)
+        self.pre_ref_root_vel = torch.zeros(root_vel_shape, device = device)
+        self.pre_ref_root_ang = torch.zeros(root_ang_shape, device = device)
 
         # policy
         self.pre_rigid_body_pos_extend = torch.zeros(body_shape, device = device)
@@ -70,6 +90,12 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
 
         # rot
         self.pre_rigid_body_rot_extend = torch.zeros(body_rot_shape, device = device)
+
+        # root
+        self.pre_root_rot = torch.zeros(root_rot_shape, device = device)
+        self.pre_root_pos = torch.zeros(root_pos_shape, device = device)
+        self.pre_root_vel = torch.zeros(root_vel_shape, device = device)
+        self.pre_root_ang = torch.zeros(root_ang_shape, device = device)
 
         self.DEBUG_PLOT_REWARD = False
         if self.DEBUG_PLOT_REWARD:
@@ -90,6 +116,20 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
     ## _pre_compute_observations_callback
     def _pre_compute_observations_callback(self):
         super()._pre_compute_observations_callback()
+        ## root
+        root_pos = self.simulator.robot_root_states[:, 0:3]
+        if self.config.simulator.config.name == "isaacgym":
+            root_rot = self.simulator.robot_root_states[:, 3:7] # xyzw
+        elif self.config.simulator.config.name == "isaacsim":
+            root_rot = self.simulator.robot_root_states[:, [4, 5, 6, 3]] # wxyz to xyzw
+        elif self.config.simulator.config.name == "genesis":
+            root_rot = self.simulator.robot_root_states[:,  3:7] # xyzw
+        else:
+            raise NotImplementedError
+
+        root_vel = self.simulator.robot_root_states[:, 7:10]
+        root_ang = self.simulator.robot_root_states[:, 10:13]
+        ##
 
         flags = self.episode_length_buf <= 1
         #
@@ -100,10 +140,23 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
         target_diff_rot = quat_mul(self.ref_body_rot_extend, quat_conjugate(self.pre_ref_rigid_body_rot_extend, w_last=True), w_last=True)
 
 
+        ## root
+        target_diff_root_rot = quat_mul(self.ref_root_rot, quat_conjugate(self.pre_ref_root_rot, w_last=True), w_last=True)
+        target_diff_root_pos = self.ref_root_pos - self.pre_ref_root_pos
+        target_diff_root_vel = self.ref_root_vel - self.pre_ref_root_vel
+        target_diff_root_ang = self.ref_root_ang - self.pre_ref_root_ang
+
         target_diff_joint_angles[flags] = 0
         target_diff_body_pos[flags] = 0
         target_diff_rot[flags, ..., : -1] = 0
         target_diff_rot[flags, ..., -1] = 1
+
+        ## root
+        target_diff_root_rot[flags, ..., : -1] = 0
+        target_diff_root_rot[flags, ..., -1] = 1
+        target_diff_root_pos[flags] = 0
+        target_diff_root_vel[flags] = 0
+        target_diff_root_ang[flags] = 0
 
         # policy
         policy_diff_joint_angles = self.simulator.dof_pos - self.pre_joint_pos
@@ -111,10 +164,24 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
 
         policy_diff_rot = quat_mul(self._rigid_body_rot_extend, quat_conjugate(self.pre_rigid_body_rot_extend, w_last=True), w_last=True)
 
+        ## root
+        policy_diff_root_rot = quat_mul(root_rot, quat_conjugate(self.pre_root_rot, w_last=True), w_last=True)
+        policy_diff_root_pos = root_pos - self.pre_root_pos
+        policy_diff_root_vel = root_vel - self.pre_root_vel
+        policy_diff_root_ang = root_ang - self.pre_root_ang
+
+
         policy_diff_joint_angles[flags] = 0
         policy_diff_body_pos[flags] = 0
         policy_diff_rot[flags, ..., : -1] = 0
         policy_diff_rot[flags, ..., -1] = 1
+        ## root
+        policy_diff_root_rot[flags, ..., : -1] = 0
+        policy_diff_root_rot[flags, ..., -1] = 1
+        policy_diff_root_pos[flags] = 0
+        policy_diff_root_vel[flags] = 0
+        policy_diff_root_ang[flags] = 0
+
 
         ## statistics
         self.target_joint_angles.update(target_diff_joint_angles)
@@ -135,6 +202,18 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
 
         self.target_body_rot.update(target_diff_rot)
         self.policy_body_rot.update(policy_diff_rot)
+
+        ## root
+        self.target_root_rot.update(target_diff_root_rot)
+        self.policy_root_rot.update(policy_diff_root_rot)
+
+        self.target_root_pos.update(target_diff_root_pos)
+        self.policy_root_pos.update(policy_diff_root_pos)
+        self.target_root_vel.update(target_diff_root_vel)
+        self.policy_root_vel.update(policy_diff_root_vel)
+        self.target_root_ang.update(target_diff_root_ang)
+        self.policy_root_ang.update(policy_diff_root_ang)
+
         ## update
         # target
         self.pre_ref_body_pos_extend[...] = self.ref_body_pos_extend
@@ -145,6 +224,12 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
 
         self.pre_ref_rigid_body_rot_extend[...] = self.ref_body_rot_extend
 
+        # root
+        self.pre_ref_root_rot[...] = self.ref_root_rot
+        self.pre_ref_root_pos[...] = self.ref_root_pos
+        self.pre_ref_root_vel[...] = self.ref_root_vel
+        self.pre_ref_root_ang[...] = self.ref_root_ang
+
         # policy
         self.pre_rigid_body_pos_extend[...] = self._rigid_body_pos_extend
         #self.pre_rigid_body_vel_extend[...] = self._rigid_body_vel_extend
@@ -153,7 +238,12 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
         #self.pre_joint_vel[...] = self.simulator.dof_vel
 
         self.pre_rigid_body_rot_extend[...] = self._rigid_body_rot_extend
+        # root
 
+        self.pre_root_rot[...] = root_rot
+        self.pre_root_pos[...] = root_pos
+        self.pre_root_vel[...] = root_vel
+        self.pre_root_ang[...] = root_ang
 
     def _reset_dofs(self, env_ids):
         super()._reset_dofs(env_ids)
@@ -499,4 +589,92 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
 
         reward[flags] = 0
 
+        return reward
+
+    # root
+    ## rot
+    def _reward_S_rootrot_mean(self, eps=1e-6):
+        dif_mean = quat_mul(self.target_root_rot.episode_mean_buf,
+                            quat_conjugate(self.policy_root_rot.episode_mean_buf, w_last=True), w_last=True)
+        dif_mean = self._normal2pi(dif_mean)
+
+        diff_dist = (dif_mean**2)#.mean(dim=-1)
+
+        norm_target = self._normal2pi(self.target_root_rot.episode_mean_buf)
+        norm_policy = self._normal2pi(self.policy_root_rot.episode_mean_buf)
+        norm_mean = ((norm_target + norm_policy) / 2.0 + eps)
+
+        reward = torch.exp(-diff_dist / norm_mean)
+        #reward = torch.mean(reward, dim = -1)
+        flags = self.episode_length_buf <= 2
+        reward[flags] = 0
+        return reward
+
+    def _reward_S_rootrot_variance(self, eps=1e-6):
+        dif_mean = self.target_root_rot.episode_variance_buf - self.policy_root_rot.episode_variance_buf
+
+        diff_dist = dif_mean[..., 0]**2
+
+        norm_mean = ((self.target_root_rot.episode_variance_buf + self.policy_root_rot.episode_variance_buf) / 2.0 + eps)
+
+        reward = torch.exp(-diff_dist / norm_mean[..., 0])
+        #reward = torch.mean(reward, dim = -1)
+        flags = self.episode_length_buf <= 2
+
+        reward[flags] = 0
+
+        return reward
+
+    ## pos
+    def _reward_S_rootpos_mean(self):
+        reward = self._similarity(self.target_root_pos.episode_mean_buf.flatten(1),
+                         self.policy_root_pos.episode_mean_buf.flatten(1))
+
+        flags = self.episode_length_buf <= 2
+        reward[flags] = 0
+        return reward
+
+    def _reward_S_rootpos_variance(self):
+        reward = self._similarity(self.target_root_pos.episode_variance_buf.flatten(1),
+                         self.policy_root_pos.episode_variance_buf.flatten(1))
+
+        flags = self.episode_length_buf <= 3
+
+        reward[flags] = 0
+        return reward
+
+    ## vel
+    def _reward_S_rootvel_mean(self):
+        reward = self._similarity(self.target_root_vel.episode_mean_buf.flatten(1),
+                         self.policy_root_vel.episode_mean_buf.flatten(1))
+
+        flags = self.episode_length_buf <= 2
+        reward[flags] = 0
+        return reward
+
+    def _reward_S_rootvel_variance(self):
+        reward = self._similarity(self.target_root_vel.episode_variance_buf.flatten(1),
+                         self.policy_root_vel.episode_variance_buf.flatten(1))
+
+        flags = self.episode_length_buf <= 3
+
+        reward[flags] = 0
+        return reward
+
+    ## ang
+    def _reward_S_rootang_mean(self):
+        reward = self._similarity(self.target_root_ang.episode_mean_buf.flatten(1),
+                         self.policy_root_ang.episode_mean_buf.flatten(1))
+
+        flags = self.episode_length_buf <= 2
+        reward[flags] = 0
+        return reward
+
+    def _reward_S_rootang_variance(self):
+        reward = self._similarity(self.target_root_ang.episode_variance_buf.flatten(1),
+                         self.policy_root_ang.episode_variance_buf.flatten(1))
+
+        flags = self.episode_length_buf <= 3
+
+        reward[flags] = 0
         return reward

@@ -354,6 +354,11 @@ class LeggedRobotMotionTracking(LeggedRobotBase):
         self.ref_body_ang_vel_extend = ref_body_ang_vel_extend # [num_envs, num_markers, 3]
         self.ref_joint_pos = ref_joint_pos # [num_envs, num_dofs]
         self.ref_joint_vel = ref_joint_vel # [num_envs, num_dofs]
+        # root
+        self.ref_root_rot = motion_res["root_rot"]
+        self.ref_root_pos = motion_res["root_pos"]
+        self.ref_root_vel = motion_res["root_vel"]
+        self.ref_root_ang = motion_res["root_ang_vel"]
 
     def _compute_reward(self):
         super()._compute_reward()

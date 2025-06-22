@@ -88,11 +88,11 @@ def main(
                         'env.config.termination_curriculum.terminate_when_motion_far_threshold_min=0.3',
                         'env.config.termination_curriculum.terminate_when_motion_far_curriculum_degree=0.000025',
                         'robot.asset.self_collisions=0',
-                        '+checkpoint=logs/MotionTracking/isaacgym-MotionTracking_CR7-motion_statistics-g1_29dof_anneal_23dof-20250619_203955/model_43500.pt'
+                        #'+checkpoint=logs/MotionTracking/isaacgym-MotionTracking_CR7-motion_contrast-g1_29dof_anneal_23dof-20250622_060112/model_11200.pt'
                     ]
                 else:
                     args.overrides = [
-                        '+checkpoint=logs/MotionTracking/isaacgym-MotionTracking_CR7-motion_statistics-g1_29dof_anneal_23dof-20250619_203955/model_39000.pt'
+                        '+checkpoint=logs/MotionTracking/isaacgym-MotionTracking_CR7-motion_contrast-g1_29dof_anneal_23dof-20250622_191222/model_10700.pt'
                     ]
 
                 if args.experimental_rerun is not None:
