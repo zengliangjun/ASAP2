@@ -9,17 +9,28 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
         super().__init__(config, device)
 
         joint_shape = (self.num_envs, self.dim_actions)
+        body_shape = (self.num_envs, self.num_bodies + self.num_extend_bodies, 3)
+
+        upper_body_shape = (self.num_envs, len(self.upper_body_id), 3)
+        lower_body_shape = (self.num_envs, len(self.lower_body_id), 3)
+        tracking_body_shape = (self.num_envs, len(self.motion_tracking_id), 3)
+        feet_body_shape = (self.num_envs, len(self.feet_indices), 3)
+
         self.target_joint_angles = statistics.MVCStatistics2(joint_shape, device, 5)
         self.policy_joint_angles = statistics.MVCStatistics2(joint_shape, device, 5)
 
+        # body_position
+        self.target_upper_body_pos = statistics.MVCStatistics2(upper_body_shape, device, 5)
+        self.policy_upper_body_pos = statistics.MVCStatistics2(upper_body_shape, device, 5)
+        self.target_lower_body_pos = statistics.MVCStatistics2(lower_body_shape, device, 5)
+        self.policy_lower_body_pos = statistics.MVCStatistics2(lower_body_shape, device, 5)
+        self.target_tracking_body_pos = statistics.MVCStatistics2(tracking_body_shape, device, 5)
+        self.policy_tracking_body_pos = statistics.MVCStatistics2(tracking_body_shape, device, 5)
+        self.target_feet_body_pos = statistics.MVCStatistics2(feet_body_shape, device, 5)
+        self.policy_feet_body_pos = statistics.MVCStatistics2(feet_body_shape, device, 5)
 
-        body_shape = (self.num_envs, self.num_bodies + self.num_extend_bodies, 3)
         self.target_body_pos = statistics.MVCStatistics2(body_shape, device, 5)
-        #self.target_body_vel = statistics.MVStatistics(shape, device)
-        #self.target_body_ang_vel = statistics.MVStatistics(shape, device) # dif_global_body_ang_vel
-
         self.policy_body_pos = statistics.MVCStatistics2(body_shape, device, 5)
-
 
         ##################################################
         self.pre_ref_body_pos_extend = torch.zeros(body_shape, device = device)
@@ -64,10 +75,6 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
         target_diff_joint_angles[flags] = 0
         target_diff_body_pos[flags] = 0
 
-        ## statistics
-        self.target_joint_angles.update(target_diff_joint_angles)
-        self.target_body_pos.update(target_diff_body_pos)
-
         # policy
         policy_diff_joint_angles = self.simulator.dof_pos - self.pre_joint_pos
         policy_diff_body_pos = self._rigid_body_pos_extend - self.pre_rigid_body_pos_extend
@@ -76,9 +83,21 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
         policy_diff_body_pos[flags] = 0
 
         ## statistics
+        self.target_joint_angles.update(target_diff_joint_angles)
         self.policy_joint_angles.update(policy_diff_joint_angles)
-        self.policy_body_pos.update(policy_diff_body_pos)
 
+
+        self.target_upper_body_pos.update(target_diff_body_pos[:, self.upper_body_id, :])
+        self.policy_upper_body_pos.update(policy_diff_body_pos[:, self.upper_body_id, :])
+        self.target_lower_body_pos.update(target_diff_body_pos[:, self.lower_body_id, :])
+        self.policy_lower_body_pos.update(policy_diff_body_pos[:, self.lower_body_id, :])
+        self.target_tracking_body_pos.update(target_diff_body_pos[:, self.motion_tracking_id, :])
+        self.policy_tracking_body_pos.update(policy_diff_body_pos[:, self.motion_tracking_id, :])
+        self.target_feet_body_pos.update(target_diff_body_pos[:, self.feet_indices, :])
+        self.policy_feet_body_pos.update(policy_diff_body_pos[:, self.feet_indices, :])
+
+        self.target_body_pos.update(target_diff_body_pos)
+        self.policy_body_pos.update(policy_diff_body_pos)
 
         ## update
         # target
@@ -100,8 +119,18 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
         super()._reset_dofs(env_ids)
 
         self.target_joint_angles.reset2(env_ids)
-        self.target_body_pos.reset2(env_ids)
         self.policy_joint_angles.reset2(env_ids)
+
+        self.target_upper_body_pos.reset2(env_ids)
+        self.policy_upper_body_pos.reset2(env_ids)
+        self.target_lower_body_pos.reset2(env_ids)
+        self.policy_lower_body_pos.reset2(env_ids)
+        self.target_tracking_body_pos.reset2(env_ids)
+        self.policy_tracking_body_pos.reset2(env_ids)
+        self.target_feet_body_pos.reset2(env_ids)
+        self.policy_feet_body_pos.reset2(env_ids)
+
+        self.target_body_pos.reset2(env_ids)
         self.policy_body_pos.reset2(env_ids)
 
 
@@ -137,8 +166,6 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
 
                 plt.show()
                 self.reward_collect.clear()
-
-
 
     ###############################################################
     def _similarity(self, target, policy, mse_weight=0.5, cos_weight=0.5, eps=1e-6):
@@ -181,11 +208,11 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
 
         return reward
 
-    ##
+    ## bodypos
     def _reward_S_bodypos_mean(self):
         reward = self._similarity(self.target_body_pos.episode_mean_buf.flatten(1),
                          self.policy_body_pos.episode_mean_buf.flatten(1))
-        diff = self._diff(self.dif_global_body_pos, self.config.rewards.reward_tracking_sigma.teleop_upper_body_pos)
+        diff = self._diff(self.dif_global_body_pos, self.config.rewards.reward_tracking_sigma.teleop_feet_pos)
 
         flags = self.episode_length_buf <= 2
 
@@ -196,7 +223,7 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
     def _reward_S_bodypos_variance(self):
         reward = self._similarity(self.target_body_pos.episode_variance_buf.flatten(1),
                          self.policy_body_pos.episode_variance_buf.flatten(1))
-        diff = self._diff(self.dif_global_body_pos, self.config.rewards.reward_tracking_sigma.teleop_upper_body_pos)
+        diff = self._diff(self.dif_global_body_pos, self.config.rewards.reward_tracking_sigma.teleop_feet_pos)
 
         flags = self.episode_length_buf <= 3
 
@@ -207,7 +234,7 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
     def _reward_S_bodypos_covariance(self):
         reward = self._similarity(self.target_body_pos.episode_covariance_buf.flatten(1),
                          self.policy_body_pos.episode_covariance_buf.flatten(1))
-        diff = self._diff(self.dif_global_body_pos, self.config.rewards.reward_tracking_sigma.teleop_upper_body_pos)
+        diff = self._diff(self.dif_global_body_pos, self.config.rewards.reward_tracking_sigma.teleop_feet_pos)
 
         flags = self.episode_length_buf <= 3
 
@@ -215,6 +242,150 @@ class Tracking(motion_tracking.LeggedRobotMotionTracking):
 
         return reward
 
+    ##
+    ## upper_body
+    def _reward_S_upperpos_mean(self):
+        reward = self._similarity(self.target_upper_body_pos.episode_mean_buf.flatten(1),
+                         self.policy_upper_body_pos.episode_mean_buf.flatten(1))
+        diff = self._diff(self.dif_global_body_pos[:, self.upper_body_id, :], self.config.rewards.reward_tracking_sigma.teleop_upper_body_pos)
+
+        flags = self.episode_length_buf <= 2
+
+        reward[flags] = diff[flags]
+
+        return reward
+
+    def _reward_S_upperpos_variance(self):
+        reward = self._similarity(self.target_upper_body_pos.episode_variance_buf.flatten(1),
+                         self.policy_upper_body_pos.episode_variance_buf.flatten(1))
+        diff = self._diff(self.dif_global_body_pos[:, self.upper_body_id, :], self.config.rewards.reward_tracking_sigma.teleop_upper_body_pos)
+
+        flags = self.episode_length_buf <= 3
+
+        reward[flags] = diff[flags]
+
+        return reward
+
+    def _reward_S_upperpos_covariance(self):
+        reward = self._similarity(self.target_upper_body_pos.episode_covariance_buf.flatten(1),
+                         self.policy_upper_body_pos.episode_covariance_buf.flatten(1))
+        diff = self._diff(self.dif_global_body_pos[:, self.upper_body_id, :], self.config.rewards.reward_tracking_sigma.teleop_upper_body_pos)
+
+        flags = self.episode_length_buf <= 3
+
+        reward[flags] = diff[flags]
+
+        return reward
+
+    ##
+    ## lower_body
+    def _reward_S_lowerpos_mean(self):
+        reward = self._similarity(self.target_lower_body_pos.episode_mean_buf.flatten(1),
+                         self.policy_lower_body_pos.episode_mean_buf.flatten(1))
+        diff = self._diff(self.dif_global_body_pos[:, self.lower_body_id, :], self.config.rewards.reward_tracking_sigma.teleop_lower_body_pos)
+
+        flags = self.episode_length_buf <= 2
+
+        reward[flags] = diff[flags]
+
+        return reward
+
+    def _reward_S_lowerpos_variance(self):
+        reward = self._similarity(self.target_lower_body_pos.episode_variance_buf.flatten(1),
+                         self.policy_lower_body_pos.episode_variance_buf.flatten(1))
+        diff = self._diff(self.dif_global_body_pos[:, self.lower_body_id, :], self.config.rewards.reward_tracking_sigma.teleop_lower_body_pos)
+
+        flags = self.episode_length_buf <= 3
+
+        reward[flags] = diff[flags]
+
+        return reward
+
+    def _reward_S_lowerpos_covariance(self):
+        reward = self._similarity(self.target_lower_body_pos.episode_covariance_buf.flatten(1),
+                         self.policy_lower_body_pos.episode_covariance_buf.flatten(1))
+        diff = self._diff(self.dif_global_body_pos[:, self.lower_body_id, :], self.config.rewards.reward_tracking_sigma.teleop_lower_body_pos)
+
+        flags = self.episode_length_buf <= 3
+
+        reward[flags] = diff[flags]
+
+        return reward
+
+
+    ##
+    ## tracking_body
+    def _reward_S_trackingpos_mean(self):
+        reward = self._similarity(self.target_tracking_body_pos.episode_mean_buf.flatten(1),
+                         self.policy_tracking_body_pos.episode_mean_buf.flatten(1))
+        diff = self._diff(self.dif_global_body_pos[:, self.motion_tracking_id, :], self.config.rewards.reward_tracking_sigma.teleop_vr_3point_pos)
+
+        flags = self.episode_length_buf <= 2
+
+        reward[flags] = diff[flags]
+
+        return reward
+
+    def _reward_S_trackingpos_variance(self):
+        reward = self._similarity(self.target_tracking_body_pos.episode_variance_buf.flatten(1),
+                         self.policy_tracking_body_pos.episode_variance_buf.flatten(1))
+        diff = self._diff(self.dif_global_body_pos[:, self.motion_tracking_id, :], self.config.rewards.reward_tracking_sigma.teleop_vr_3point_pos)
+
+        flags = self.episode_length_buf <= 3
+
+        reward[flags] = diff[flags]
+
+        return reward
+
+    def _reward_S_trackingpos_covariance(self):
+        reward = self._similarity(self.target_tracking_body_pos.episode_covariance_buf.flatten(1),
+                         self.policy_tracking_body_pos.episode_covariance_buf.flatten(1))
+        diff = self._diff(self.dif_global_body_pos[:, self.motion_tracking_id, :], self.config.rewards.reward_tracking_sigma.teleop_vr_3point_pos)
+
+        flags = self.episode_length_buf <= 3
+
+        reward[flags] = diff[flags]
+
+        return reward
+
+    ##
+    ## feet_body
+    def _reward_S_feetpos_mean(self):
+        reward = self._similarity(self.target_feet_body_pos.episode_mean_buf.flatten(1),
+                         self.policy_feet_body_pos.episode_mean_buf.flatten(1))
+        diff = self._diff(self.dif_global_body_pos[:, self.feet_indices, :], self.config.rewards.reward_tracking_sigma.teleop_feet_pos)
+
+        flags = self.episode_length_buf <= 2
+
+        reward[flags] = diff[flags]
+
+        return reward
+
+    def _reward_S_feetpos_variance(self):
+        reward = self._similarity(self.target_feet_body_pos.episode_variance_buf.flatten(1),
+                         self.policy_feet_body_pos.episode_variance_buf.flatten(1))
+        diff = self._diff(self.dif_global_body_pos[:, self.feet_indices, :], self.config.rewards.reward_tracking_sigma.teleop_feet_pos)
+
+        flags = self.episode_length_buf <= 3
+
+        reward[flags] = diff[flags]
+
+        return reward
+
+    def _reward_S_feetpos_covariance(self):
+        reward = self._similarity(self.target_feet_body_pos.episode_covariance_buf.flatten(1),
+                         self.policy_feet_body_pos.episode_covariance_buf.flatten(1))
+        diff = self._diff(self.dif_global_body_pos[:, self.feet_indices, :], self.config.rewards.reward_tracking_sigma.teleop_feet_pos)
+
+        flags = self.episode_length_buf <= 3
+
+        reward[flags] = diff[flags]
+
+        return reward
+
+
+    ##
+    ## jointangle
     def _reward_S_jointangle_mean(self):
         reward = self._similarity(self.target_joint_angles.episode_mean_buf,
                          self.policy_joint_angles.episode_mean_buf)

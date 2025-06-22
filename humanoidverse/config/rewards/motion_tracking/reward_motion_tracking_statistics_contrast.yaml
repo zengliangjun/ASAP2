@@ -17,12 +17,22 @@ rewards:
       teleop_joint_position: 0.75
       teleop_joint_velocity: 0.5
 
-      S_bodypos_mean: 0.5
-      S_bodypos_variance: 0.5
-      S_bodypos_covariance: 0.5
-      S_jointangle_mean: 0.5
-      S_jointangle_variance: 0.5
-      S_jointangle_covariance: 0.5
+      S_upperpos_mean: 1.0
+      S_upperpos_variance: 1.0
+      S_upperpos_covariance: 1.0
+      S_lowerpos_mean: 1.0
+      S_lowerpos_variance: 1.0
+      S_lowerpos_covariance: 1.0
+      S_trackingpos_mean: 1.6
+      S_trackingpos_variance: 1.6
+      S_trackingpos_covariance: 1.6
+      S_feetpos_mean: 2.1
+      S_feetpos_variance: 2.1
+      S_feetpos_covariance: 2.1
+
+      S_jointangle_mean: 0.75
+      S_jointangle_variance: 0.75
+      S_jointangle_covariance: 0.75
 
       penalty_torques: -0.000001
       # penalty_dof_vel: -0.0001
