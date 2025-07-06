@@ -1,0 +1,7 @@
+# @package _global_
+
+defaults:
+  - /algo: ppo
+  - /env: motion_statistics
+
+experiment_name: Motion_Statistics

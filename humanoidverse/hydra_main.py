@@ -66,9 +66,11 @@ def main(
                 if "base" == config_name:
                     args.overrides = [
                         '+simulator=isaacgym',
-                        '+exp=motion_tracking',
+                        #'+exp=motion_tracking',
+                        '+exp=motion_statistics',
                         '+domain_rand=NO_domain_rand',
-                        '+rewards=motion_tracking/reward_motion_tracking_dm_2real',
+                        #'+rewards=motion_tracking/reward_motion_tracking_dm_2real',
+                        '+rewards=motion_tracking/reward_motion_tracking_statistics',
                         '+robot=g1/g1_29dof_anneal_23dof',
                         '+terrain=terrain_locomotion_plane',
                         '+obs=motion_tracking/deepmimic_a2c_nolinvel_LARGEnoise_history',
@@ -83,11 +85,12 @@ def main(
                         'env.config.termination_curriculum.terminate_when_motion_far_curriculum=True',
                         'env.config.termination_curriculum.terminate_when_motion_far_threshold_min=0.3',
                         'env.config.termination_curriculum.terminate_when_motion_far_curriculum_degree=0.000025',
-                        'robot.asset.self_collisions=0'
+                        'robot.asset.self_collisions=0',
+                        #'+checkpoint=logs/MotionTracking/isaacgym-MotionTracking_CR7-motion_contrast-g1_29dof_anneal_23dof-20250622_060112/model_11200.pt'
                     ]
                 else:
                     args.overrides = [
-                        '+checkpoint=logs/MotionTracking/20250326_131636-MotionTracking_CR7-motion_tracking-g1_29dof_anneal_23dof/model_49500.pt'
+                        '+checkpoint=logs/MotionTracking/isaacgym-MotionTracking_CR7-motion_contrast-g1_29dof_anneal_23dof-20250622_191222/model_10700.pt'
                     ]
 
                 if args.experimental_rerun is not None:
