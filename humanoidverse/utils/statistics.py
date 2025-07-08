@@ -7,12 +7,12 @@ class MVStatistics:
 
     def __init__(self, shape: Union[tuple, torch.Size], device, episode_truncation = -1):
         self.episode_truncation = episode_truncation
-
-        self.current_step = torch.zeros((shape[0], ), device=device, dtype=torch.long)
+        self.num_envs = shape[0]
+        self.current_step = torch.zeros((self.num_envs, ), device=device, dtype=torch.long)
         self.episode_mean_buf = torch.zeros(shape, device=device, dtype=torch.float)
         self.episode_variance_buf = torch.zeros_like(self.episode_mean_buf)
 
-        self.zero_flag = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
+        self.zero_flag = torch.zeros(self.num_envs, device=device, dtype=torch.bool)
 
 
     def clean(self):
