@@ -1,4 +1,7 @@
-<h1 align="center"> ASAP: Aligning Simulation and Real-World Physics for 
+# Statistical Reinforcement Learning, please switch to "[work](https://github.com/zengliangjun/ASAP2/tree/master)" branch（统计强化学习实现在 [work](https://github.com/zengliangjun/ASAP2/tree/master)分枝）
+
+
+<h1 align="center"> ASAP: Aligning Simulation and Real-World Physics for
 
 Learning Agile Humanoid Whole-Body Skills </h1>
 
@@ -123,7 +126,7 @@ experiment_name=G123dof_loco \
 headless=True \
 rewards.reward_penalty_curriculum=True \
 rewards.reward_initial_penalty_scale=0.1 \
-rewards.reward_penalty_degree=0.00003 
+rewards.reward_penalty_degree=0.00003
 ```
 
 </details>
